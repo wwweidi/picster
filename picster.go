@@ -118,8 +118,12 @@ func readFileDate(path string) (date string) {
 	return modifiedtime.Format("2006:01:02 15:04:05")
 }
 
-func isFoto(path string) (itis bool) {
+func isFoto(path string) bool {
 	return strings.HasSuffix(strings.ToLower(path), "jpg")
+}
+
+func isVideo(path string) bool {
+	return strings.HasSuffix(strings.ToLower(path), "mov") || strings.HasSuffix(strings.ToLower(path), "mp4")
 }
 
 func parseDate(date string) (filename string, foldername string, err error) {
@@ -151,6 +155,10 @@ func errToStr(err error) (errSTr string) {
 	return errStr
 }
 
+func getExtension(path string) string {
+	return strings.ToLower(filepath.Ext(path))
+}
+
 // digester reads path names from paths and sends digests of the corresponding
 // files on c until either paths or done is closed.
 func digester(done <-chan struct{}, paths <-chan string, dest string, c chan<- Result) {
@@ -168,7 +176,10 @@ func digester(done <-chan struct{}, paths <-chan string, dest string, c chan<- R
 			fmt.Println(err)
 		}
 
-		if isFoto(path) {
+		ext := getExtension(path)
+		switch ext {
+		//FOTO
+		case ".jpg":
 
 			data, err := ioutil.ReadFile(path)
 			date, err := readExifDate(data)
@@ -178,17 +189,24 @@ func digester(done <-chan struct{}, paths <-chan string, dest string, c chan<- R
 			}
 
 			dateAsFileName, folderName, err := parseDate(date)
-
-			destPath := filepath.Join(absDestPath, folderName, dateAsFileName+".jpg")
-
+			destPath := filepath.Join(absDestPath, "fotos", folderName, dateAsFileName+ext)
 			md5Str := getMD5(data)
-
 			errStr := errToStr(err)
 
 			res = Result{absPath, destPath, md5Str, "", errStr}
-		} else {
+		//VIDEO
+		case ".mov", ".mp4", ".avi":
+			date := readFileDate(path)
+			dateAsFileName, folderName, err := parseDate(date)
+
+			destPath := filepath.Join(absDestPath, "videos", folderName, dateAsFileName+ext)
+			errStr := errToStr(err)
+			res = Result{absPath, destPath, "", "", errStr}
+
+		default:
 			res = Result{absPath, "", "", "", "Not a foto"}
 		}
+
 		select {
 		case c <- res:
 		case <-done:
@@ -311,10 +329,11 @@ func MoveFile(source string, destination string, log *logrus.Entry) {
 			return
 		} else {
 			newDest := destination
+			ext := filepath.Ext(destination)
 			cnt := 0
 			for fileExists(newDest) {
 				cnt = cnt + 1
-				newDest = strings.Replace(destination, ".jpg", fmt.Sprintf("_%03d.jpg", cnt), -1)
+				newDest = strings.Replace(destination, ext, fmt.Sprintf("_%03d%s", cnt, ext), -1)
 			}
 			destination = newDest
 		}
