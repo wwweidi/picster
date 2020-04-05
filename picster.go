@@ -1,4 +1,4 @@
-package main
+package picster
 
 import (
 	"crypto/md5"
@@ -118,14 +118,6 @@ func readFileDate(path string) (date string) {
 	return modifiedtime.Format("2006:01:02 15:04:05")
 }
 
-func isFoto(path string) bool {
-	return strings.HasSuffix(strings.ToLower(path), "jpg")
-}
-
-func isVideo(path string) bool {
-	return strings.HasSuffix(strings.ToLower(path), "mov") || strings.HasSuffix(strings.ToLower(path), "mp4")
-}
-
 func parseDate(date string) (filename string, foldername string, err error) {
 	dateAsFileName := strings.ReplaceAll(strings.ReplaceAll(date, ":", ""), " ", "_")
 	//fmt.Println(dateAsFileName)
@@ -215,11 +207,11 @@ func digester(done <-chan struct{}, paths <-chan string, dest string, c chan<- R
 	}
 }
 
-// MD5All reads all the files in the file tree rooted at root and returns a map
+// ScanDir reads all the files in the file tree rooted at root and returns a map
 // from file path to the MD5 sum of the file's contents.  If the directory walk
 // fails or any read operation fails, MD5All returns an error.  In that case,
 // MD5All does not wait for inflight read operations to complete.
-func MD5All(root string, dest string) ([]Result, error) {
+func ScanDir(root string, dest string) ([]Result, error) {
 	// MD5All closes the done channel when it returns; it may do so before
 	// receiving all the values from c and errc.
 	done := make(chan struct{})
@@ -263,35 +255,35 @@ func MD5All(root string, dest string) ([]Result, error) {
 	return resultList, nil
 }
 
-//CopyFile create file, copy content, delete old
-func CopyFile(sourcePath, destPath string, log *logrus.Entry) {
+//CopyDelFile create file, copy content, delete old
+func CopyDelFile(sourcePath, destPath string, log *logrus.Entry) {
 	inputFile, err := os.Open(sourcePath)
 	if err != nil {
-		log.Error("Couldn't open source file: %s", err)
+		log.Error("Couldn't open source file:", err)
 		return
 	}
 	outputFile, err := os.Create(destPath)
 	if err != nil {
 		inputFile.Close()
-		log.Error("Couldn't open dest file: %s", err)
+		log.Error("Couldn't open dest file:", err)
 		return
 	}
 	defer outputFile.Close()
 	_, err = io.Copy(outputFile, inputFile)
 	inputFile.Close()
 	if err != nil {
-		log.Error("Writing to output file failed: %s", err)
+		log.Error("Writing to output file failed:", err)
 		return
 	}
 	// The copy was successful, so now delete the original file
 	err = os.Remove(sourcePath)
 	if err != nil {
-		log.Error("Failed removing original file: %s", err)
+		log.Error("Failed removing original file:", err)
 		return
 	}
 }
-
-func fileExists(path string) bool {
+//FileExists returns true, if file exists, false otherwise
+func FileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
 }
@@ -308,7 +300,7 @@ func MoveFile(source string, destination string, log *logrus.Entry) {
 	//prepare directory
 	err := os.MkdirAll(filepath.Dir(destination), os.ModePerm)
 	if err != nil {
-		log.Error("Error when creating directory: %s", err)
+		log.Error("Error when creating directory:", err)
 	}
 
 	//check if already exists
@@ -324,25 +316,25 @@ func MoveFile(source string, destination string, log *logrus.Entry) {
 			log.Info("Same size - same file ?! skipping")
 			err = os.Remove(source)
 			if err != nil {
-				log.Error("Failed removing original file: %s", err)
+				log.Error("Failed removing original file:", err)
 			}
 			return
-		} else {
-			newDest := destination
-			ext := filepath.Ext(destination)
-			cnt := 0
-			for fileExists(newDest) {
-				cnt = cnt + 1
-				newDest = strings.Replace(destination, ext, fmt.Sprintf("_%03d%s", cnt, ext), -1)
-			}
-			destination = newDest
 		}
+		newDest := destination
+		ext := filepath.Ext(destination)
+		cnt := 0
+		for FileExists(newDest) {
+			cnt = cnt + 1
+			newDest = strings.Replace(destination, ext, fmt.Sprintf("_%03d%s", cnt, ext), -1)
+		}
+		destination = newDest
+
 	}
 
 	err = os.Rename(source, destination)
 	if err != nil {
 		log.Info("os.Rename not possible")
-		CopyFile(source, destination, log)
+		CopyDelFile(source, destination, log)
 	}
 }
 
@@ -395,7 +387,7 @@ func writeScanLog(results []Result) {
 func main() {
 	// Calculate the MD5 sum of all files under the specified directory,
 	// then print the results sorted by path name.
-	results, err := MD5All(os.Args[1], os.Args[2])
+	results, err := ScanDir(os.Args[1], os.Args[2])
 
 	if err != nil {
 		fmt.Println(err)
