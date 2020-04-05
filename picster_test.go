@@ -22,8 +22,8 @@ func getTempedFile(srcDir string, extension string, content []byte) (expectedPat
 	}
 
 	tmpfile.Close()
-	folderName := modTime.Format("2006-01")
-	fileName := modTime.Format("20060102_150405")
+	folderName := modTime.Format(GetConfiguration().folderNamePattern)
+	fileName := modTime.Format(GetConfiguration().fileNamePattern)
 
 	return filepath.Join(folderName, fileName+"."+extension)
 }
@@ -59,9 +59,9 @@ func TestFileExtensions(t *testing.T) {
 	for _, expected := range expectedPaths {
 		var subdir string
 		if filepath.Ext(expected) == ".jpg" {
-			subdir = "fotos"
+			subdir = GetConfiguration().pictureFolder
 		} else {
-			subdir = "videos"
+			subdir = GetConfiguration().videoFolder
 		}
 
 		expectedPath := filepath.Join(dest, subdir, expected)
@@ -109,16 +109,16 @@ func TestNameAndSize(t *testing.T) {
 	//Assert
 
 	
-	expectedPath := filepath.Join(dest, "fotos", f1)
+	expectedPath := filepath.Join(dest, GetConfiguration().pictureFolder, f1)
 	if !FileExists(expectedPath) {
 		t.Error("Expected file does not exist: ", expectedPath)
 	}
-	expectedPath = filepath.Join(dest, "fotos", f2)
+	expectedPath = filepath.Join(dest, GetConfiguration().pictureFolder, f2)
 	expectedPath = strings.Replace(expectedPath, ".jpg", "_001.jpg", -1)
 	if !FileExists(expectedPath) {
 		t.Error("Expected file does not exist: ", expectedPath)
 	}
-	expectedPath = filepath.Join(dest, "fotos", f3)
+	expectedPath = filepath.Join(dest, GetConfiguration().pictureFolder, f3)
 	if !FileExists(expectedPath) {
 		t.Error("Expected file does not exist: ", expectedPath)
 	}

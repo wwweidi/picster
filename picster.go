@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	exif "github.com/dsoprea/go-exif/v2"
 	"github.com/sirupsen/logrus"
@@ -56,25 +57,25 @@ type Result struct {
 	Err        string //error
 }
 
-func readExifDate(data []byte) (dateString string, err error) {
+func readExifDate(data []byte) (date time.Time, err error) {
 
 	rawExif, err := exif.SearchAndExtractExif(data)
 	if err != nil {
-		return "", err
+		return time.Time{}, err
 	}
 
 	im := exif.NewIfdMapping()
 
 	err = exif.LoadStandardIfds(im)
 	if err != nil {
-		return "", err
+		return time.Time{}, err
 	}
 
 	ti := exif.NewTagIndex()
 
 	_, index, err := exif.Collect(im, ti, rawExif)
 	if err != nil {
-		return "", err
+		return time.Time{}, err
 	}
 
 	const tagName = "DateTime"
@@ -84,29 +85,31 @@ func readExifDate(data []byte) (dateString string, err error) {
 	// We know the tag we want is on IFD0 (the first/root IFD).
 	results, err := rootIfd.FindTagWithName(tagName)
 	if err != nil {
-		return "", err
+		return time.Time{}, err
 	}
 
 	// This should never happen.
 	if len(results) != 1 {
 		//log.Panicf("there wasn't exactly one result")
-		return "", err
+		return time.Time{}, err
 	}
 
 	ite := results[0]
 
 	valueRaw, err := ite.Value()
 	if err != nil {
-		return "", err
+		return time.Time{}, err
 	}
 
 	value := valueRaw.(string)
-	//fmt.Println(value)
-	return value, nil
 
+	const exifDate = "2006:01:02 15:04:05"
+	time, err := time.Parse(exifDate, value)
+	
+	return time, err
 }
 
-func readFileDate(path string) (date string) {
+func readFileDate(path string) (date time.Time) {
 	// get last modified time
 	file, err := os.Stat(path)
 
@@ -114,21 +117,15 @@ func readFileDate(path string) (date string) {
 		fmt.Println(err)
 	}
 
-	modifiedtime := file.ModTime()
-	return modifiedtime.Format("2006:01:02 15:04:05")
+	return file.ModTime()
 }
 
-func parseDate(date string) (filename string, foldername string, err error) {
-	dateAsFileName := strings.ReplaceAll(strings.ReplaceAll(date, ":", ""), " ", "_")
-	//fmt.Println(dateAsFileName)
+func parseDate(date time.Time) (filename string, foldername string, err error) {
+	filename = date.Format(GetConfiguration().fileNamePattern)
 
-	folderParts := strings.Split(date, ":")[0:2]
-	//TODO check length
+	foldername = date.Format(GetConfiguration().folderNamePattern)
 
-	folderName := strings.Join(folderParts, "-")
-	//fmt.Println(folderName)
-
-	return dateAsFileName, folderName, err
+	return
 }
 
 func getMD5(data []byte) (md5Str string) {
@@ -176,12 +173,12 @@ func digester(done <-chan struct{}, paths <-chan string, dest string, c chan<- R
 			data, err := ioutil.ReadFile(path)
 			date, err := readExifDate(data)
 
-			if date == "" || err != nil {
+			if  err != nil {
 				date = readFileDate(path)
 			}
 
 			dateAsFileName, folderName, err := parseDate(date)
-			destPath := filepath.Join(absDestPath, "fotos", folderName, dateAsFileName+ext)
+			destPath := filepath.Join(absDestPath, GetConfiguration().pictureFolder, folderName, dateAsFileName+ext)
 			md5Str := getMD5(data)
 			errStr := errToStr(err)
 
@@ -191,12 +188,12 @@ func digester(done <-chan struct{}, paths <-chan string, dest string, c chan<- R
 			date := readFileDate(path)
 			dateAsFileName, folderName, err := parseDate(date)
 
-			destPath := filepath.Join(absDestPath, "videos", folderName, dateAsFileName+ext)
+			destPath := filepath.Join(absDestPath, GetConfiguration().videoFolder, folderName, dateAsFileName+ext)
 			errStr := errToStr(err)
 			res = Result{absPath, destPath, "", "", errStr}
 
 		default:
-			res = Result{absPath, "", "", "", "Not a foto"}
+			res = Result{absPath, "", "", "", "Not a foto or video"}
 		}
 
 		select {
@@ -282,6 +279,7 @@ func CopyDelFile(sourcePath, destPath string, log *logrus.Entry) {
 		return
 	}
 }
+
 //FileExists returns true, if file exists, false otherwise
 func FileExists(path string) bool {
 	_, err := os.Stat(path)
